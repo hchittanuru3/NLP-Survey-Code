@@ -1,16 +1,54 @@
+import glob
 import json
 import requests
+import pandas as pd
 
 BASE_URL = "https://api.monarchinitiative.org/api/nlp/annotate/entities"
+DATA_PATH = "Text/"
 
 
 def get_hpo(text):
     resp = requests.get(BASE_URL, params={"content": text}).json()
+    symptoms = []
+    codes = []
+    starts = []
+    ends = []
     for match in resp["spans"]:
-        print(match)
+        for token in match['token']:
+            if "HP:" in token["id"]:
+                symptoms.append(token["terms"][0])
+                codes.append(token["id"].replace("HP:", ""))
+                starts.append(match['start'])
+                ends.append(match['end'])
+    return symptoms, codes, starts, ends
+
+def extract_info_biolink(data_path):
+    files = sorted(glob.glob(DATA_PATH + "*"))
+    df_dict = {
+        "file": [],
+        "text": [],
+        "HPO_symptoms": [],
+        "HPO_codes": [],
+        "starts": [],
+        "ends": [],
+    }
+    for file in files:
+        file_name = file.replace(DATA_PATH, "")
+        df_dict["file"].append(file_name)
+        with open(file, "r") as f:
+            input_text = f.read()
+        f.close()
+        df_dict["text"].append(input_text)
+        symptoms, codes, starts, ends = get_hpo(input_text)
+        df_dict["HPO_symptoms"].append(symptoms)
+        df_dict["HPO_codes"].append(codes)
+        df_dict["starts"].append(starts)
+        df_dict["ends"].append(ends)
+    df = pd.DataFrame(
+        df_dict, columns=["file", "text", "HPO_symptoms", "HPO_codes", "starts", "ends"]
+    )
+    df.to_csv(path_or_buf=data_path)
 
 
 if __name__ == "__main__":
-    get_hpo(
-        "A pedigree of branchio-oto-renal dysplasia (the BOR syndrome) is reported, including the documentation by serial audiometric studies of the onset and rapid progression of hearing loss in the twin sister of an affected child. The literature on this syndrome is analyzed to derive some figures for use in genetic counseling of such families. Branchio-oto-renal dysplasia is an autosomal dominant disorder in which affected individuals may have preauricular pits, lachrymal duct stenosis, hearing loss, branchial fistulas or cysts, structural defects of the outer, middle, and inner ear, and renal anomalies, which may range from mild hypoplasia to complete absence. Not all features of the syndrome are expressed in all carriers of the gene, but few carriers lack all the features, and the pits, branchial clefts, and hearing loss, are frequently expressed. Those offspring of affected persons who have pits or fistulas are likely (about 80%) to have hearing loss of varying degrees of severity. A minority of heterozygotes (about 7%) may have hearing loss without pits or fistulas. The risk of severe renal malformation is probably fairly low. Whether families that show dominant inheritance of pits, clefts, and deafness without renal anomalies represent variants of the BOR syndrome or a separate entity (the BO syndrome), is still not clear. At present, any individual with preauricular pits and branchial clefts deserves both otologic and renal investigation."
-    )
+    extract_info_biolink("data/biolink_GSC.csv")
